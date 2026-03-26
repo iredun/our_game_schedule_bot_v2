@@ -1,0 +1,11 @@
+python-telegram-bot==20.3
+python-dotenv==1.0.0
+pytz==2022.7.1
+python-dateutil==2.8.2
+SQLAlchemy==2.0.38
+alembic==1.14.1
+fastapi==0.115.8
+uvicorn==0.34.0
+pydantic-settings==2.8.1
+psycopg[binary]==3.2.6
+vkbottle==4.7.0

@@ -1,0 +1,1 @@
+"""DB-backed project architecture."""
