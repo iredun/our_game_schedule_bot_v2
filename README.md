@@ -17,8 +17,10 @@ TELEGRAM_BOT_TOKEN=
 TELEGRAM_ALLOWED_CHAT_IDS=
 VK_BOT_TOKEN=
 VK_ALLOWED_CHAT_IDS=
+TRAEFIK_DOMAIN=calendar.example.com
+TRAEFIK_ACME_EMAIL=admin@example.com
 DATABASE_URL=sqlite:///app.db
-APP_BASE_URL=http://localhost:8000
+APP_BASE_URL=https://calendar.example.com
 TIMEZONE=Europe/Moscow
 ```
 
@@ -59,6 +61,7 @@ uvicorn web.main:app --reload
 
 Поднимаются сервисы:
 
+- `traefik` — reverse proxy с Let's Encrypt
 - `db` — PostgreSQL
 - `migrate` — прогоняет Alembic миграции
 - `web` — FastAPI с `ical`
@@ -79,3 +82,9 @@ docker compose up --build -d
 ```
 
 Для Docker используется `DATABASE_URL=postgresql+psycopg://...`.
+Для HTTPS через Let's Encrypt нужны:
+
+- `TRAEFIK_DOMAIN` — реальный публичный домен с A/AAAA записью на сервер
+- `TRAEFIK_ACME_EMAIL` — email для ACME регистрации
+
+После этого `web` будет доступен через Traefik по `https://<TRAEFIK_DOMAIN>`.
