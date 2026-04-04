@@ -13,7 +13,11 @@ from db.session import SessionLocal
 from platforms.telegram.access import check_access
 from platforms.telegram.consts import REPLY_MARKUP
 from platforms.telegram.formatting import generate_message, pretty_user_name
-from platforms.telegram.parsing import apply_time_range, parse_game_datetime, parse_time_range
+from platforms.telegram.parsing import (
+    apply_time_range,
+    parse_game_datetime,
+    parse_time_range,
+)
 from services.calendar_service import CalendarService
 from services.chat_member_service import ChatMemberService
 from services.game_service import GameService
@@ -79,7 +83,9 @@ async def calendar_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 f"https://t.me/{me.username}?start=calendar_link"
             )
         else:
-            await update.message.reply_text("Напиши боту в личку и вызови /calendar_link.")
+            await update.message.reply_text(
+                "Напиши боту в личку и вызови /calendar_link."
+            )
         return
 
     with SessionLocal() as session:
@@ -98,7 +104,11 @@ async def calendar_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         token, created = calendar_service.get_or_create_token(account.user)
         url = calendar_service.build_calendar_url(token.token)
 
-    title = "Создал новую персональную iCal ссылку:" if created else "Твоя персональная iCal ссылка:"
+    title = (
+        "Создал новую персональную iCal ссылку:"
+        if created
+        else "Твоя персональная iCal ссылка:"
+    )
     await update.message.reply_text(
         f"{title}\n"
         f"{url}\n\n"
@@ -221,7 +231,9 @@ async def list_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session.commit()
 
         game_service = GameService(session)
-        game_service.cleanup_old_chat_games(chat_id=chat.id, before_dt=_now_date_without_time())
+        game_service.cleanup_old_chat_games(
+            chat_id=chat.id, before_dt=_now_date_without_time()
+        )
         games = game_service.list_chat_games(chat_id=chat.id)
 
     if not games:
@@ -236,7 +248,9 @@ async def list_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
         game_text = f"{format_game_datetime_range(game.starts_at, game.duration_minutes)} {game.description or ''}".strip()
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            reply_to_message_id=int(game.source_message_id) if game.source_message_id else None,
+            reply_to_message_id=int(game.source_message_id)
+            if game.source_message_id
+            else None,
             text=game_text,
         )
 
@@ -310,47 +324,21 @@ async def mynameis(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not access:
         return
 
-    with SessionLocal() as session:
-        platform_service = PlatformService(session)
-        account = platform_service.register_account(
-            platform=Platform.TELEGRAM,
-            platform_user_id=str(update.effective_user.id),
-            username=update.effective_user.username,
-            first_name=update.effective_user.first_name,
-            last_name=update.effective_user.last_name,
-            display_name=update.effective_user.full_name,
-        )
-        chat = platform_service.register_chat(
-            platform=Platform.TELEGRAM,
-            platform_chat_id=str(update.effective_chat.id),
-            title=update.effective_chat.title,
-        )
-        session.commit()
+    new_name = " ".join(context.args)
 
-        chat_member_service = ChatMemberService(session)
-        if context.args:
-            new_name = " ".join(context.args)
-            chat_member_service.set_custom_name(
-                chat_id=chat.id,
-                user_id=account.user_id,
-                custom_display_name=new_name,
-            )
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                reply_to_message_id=update.message.id,
-                text=f"Теперь ты - {new_name}",
-            )
-        else:
-            deleted = chat_member_service.clear_custom_name(
-                chat_id=chat.id,
-                user_id=account.user_id,
-            )
-            if deleted:
-                await context.bot.send_message(
-                    chat_id=update.effective_chat.id,
-                    reply_to_message_id=update.message.id,
-                    text="Вернул твое настоящее имя!",
-                )
+    if not new_name.strip():
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            reply_to_message_id=update.message.id,
+            text="Пожалуйста, введите новое имя!",
+        )
+        return
+
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        reply_to_message_id=update.message.id,
+        text=f"Какой ты нахуй {new_name}?, ты  же {update.effective_user.full_name}, не позорься!",
+    )
 
 
 async def _update_game_and_refresh_message(
@@ -610,7 +598,9 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         session.commit()
 
         chat_member_service = ChatMemberService(session)
-        member_settings = chat_member_service.get_settings(chat_id=chat.id, user_id=account.user_id)
+        member_settings = chat_member_service.get_settings(
+            chat_id=chat.id, user_id=account.user_id
+        )
         display_name = pretty_user_name(
             query.from_user,
             member_settings.custom_display_name if member_settings else "",
