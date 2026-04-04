@@ -3,7 +3,7 @@ from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pytz import timezone
+from zoneinfo import ZoneInfo
 from datetime import tzinfo
 
 
@@ -22,7 +22,9 @@ class Settings(BaseSettings):
     app_base_url: str = "http://localhost:8000"
     telegram_bot_token: str = Field(default="", alias="TELEGRAM_BOT_TOKEN")
     vk_bot_token: str = Field(default="", alias="VK_BOT_TOKEN")
-    telegram_allowed_chat_ids_raw: str = Field(default="", alias="TELEGRAM_ALLOWED_CHAT_IDS")
+    telegram_allowed_chat_ids_raw: str = Field(
+        default="", alias="TELEGRAM_ALLOWED_CHAT_IDS"
+    )
     vk_allowed_chat_ids_raw: str = Field(default="", alias="VK_ALLOWED_CHAT_IDS")
     database_url: str = Field(
         default=f"sqlite:///{(BASE_DIR / 'app.db').as_posix()}",
@@ -46,7 +48,7 @@ class Settings(BaseSettings):
 
     @property
     def timezone(self) -> tzinfo:
-        return timezone(self.timezone_raw)
+        return ZoneInfo(self.timezone_raw)
 
     @property
     def vk_allowed_chat_ids(self) -> set[int]:

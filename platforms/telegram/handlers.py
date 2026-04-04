@@ -141,7 +141,7 @@ async def new_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.args:
         time_arg = None
         for arg in context.args:
-            if not ":" in arg or not "-" in arg:
+            if ":" not in arg or "-" not in arg:
                 continue
 
             try:
