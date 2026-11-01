@@ -700,7 +700,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             not_sure_text = "\n".join(filter(None, not_sure_users))
 
             if not_sure_text:
-                await send_notice(update, context,
+                await context.bot.send_message(
                     chat_id=update.effective_chat.id,
                     reply_to_message_id=query.message.message_id,
                     parse_mode=ParseMode.MARKDOWN,
