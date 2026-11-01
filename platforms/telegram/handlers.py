@@ -1,9 +1,8 @@
 import logging
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from telegram import Update
-from telegram.constants import ParseMode
+from telegram.constants import ChatMemberStatus, ParseMode
 from telegram.ext import ContextTypes
 
 from core.config import get_settings
@@ -13,6 +12,7 @@ from db.session import SessionLocal
 from platforms.telegram.access import check_access
 from platforms.telegram.consts import REPLY_MARKUP
 from platforms.telegram.formatting import generate_message, pretty_user_name
+from platforms.telegram.messaging import delete_invoking_command, send_notice
 from platforms.telegram.parsing import (
     apply_time_range,
     parse_game_datetime,
@@ -25,6 +25,25 @@ from services.platform_service import PlatformService
 
 
 settings = get_settings()
+
+
+async def _can_edit_game(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    account_id: int,
+    author_account_id: int,
+) -> bool:
+    if account_id == author_account_id:
+        return True
+
+    try:
+        member = await context.bot.get_chat_member(
+            chat_id=update.effective_chat.id,
+            user_id=update.effective_user.id,
+        )
+    except Exception:
+        return False
+    return member.status in {ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER}
 
 
 def _now_date_without_time() -> datetime:
@@ -69,8 +88,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await calendar_link(update, context)
         return
 
-    await update.message.reply_text(
-        "Бот запущен. Команда /calendar_link создаст персональную iCal ссылку."
+    await send_notice(
+        update,
+        context,
+        text="Бот запущен. Команда /calendar_link создаст персональную iCal ссылку.",
     )
 
 
@@ -78,13 +99,19 @@ async def calendar_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if update.effective_chat.type != "private":
         me = await context.bot.get_me()
         if me.username:
-            await update.message.reply_text(
-                "Перейди в личку бота и запусти генерацию ссылки:\n"
-                f"https://t.me/{me.username}?start=calendar_link"
+            await send_notice(
+                update,
+                context,
+                text=(
+                    "Перейди в личку бота и запусти генерацию ссылки:\n"
+                    f"https://t.me/{me.username}?start=calendar_link"
+                ),
             )
         else:
-            await update.message.reply_text(
-                "Напиши боту в личку и вызови /calendar_link."
+            await send_notice(
+                update,
+                context,
+                text="Напиши боту в личку и вызови /calendar_link.",
             )
         return
 
@@ -109,10 +136,14 @@ async def calendar_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         if created
         else "Твоя персональная iCal ссылка:"
     )
-    await update.message.reply_text(
-        f"{title}\n"
-        f"{url}\n\n"
-        "Храни ее как пароль: любой, у кого она есть, увидит твои игры."
+    await send_notice(
+        update,
+        context,
+        text=(
+            f"{title}\n"
+            f"{url}\n\n"
+            "Храни ее как пароль: любой, у кого она есть, увидит твои игры."
+        ),
     )
 
 
@@ -124,7 +155,7 @@ async def new_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         date_time = parse_game_datetime(context.args.pop(0))
     except Exception:
-        await context.bot.send_message(
+        await send_notice(update, context,
             chat_id=update.effective_chat.id,
             reply_to_message_id=update.message.id,
             parse_mode=ParseMode.MARKDOWN,
@@ -154,7 +185,7 @@ async def new_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     time_arg = arg
                     break
                 except Exception:
-                    await context.bot.send_message(
+                    await send_notice(update, context,
                         chat_id=update.effective_chat.id,
                         reply_to_message_id=update.message.id,
                         parse_mode=ParseMode.MARKDOWN,
@@ -165,7 +196,7 @@ async def new_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if time_arg:
             context.args.remove(time_arg)
         else:
-            await context.bot.send_message(
+            await send_notice(update, context,
                 chat_id=update.effective_chat.id,
                 reply_to_message_id=update.message.id,
                 parse_mode=ParseMode.MARKDOWN,
@@ -184,6 +215,8 @@ async def new_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=REPLY_MARKUP,
         text=f"{date_text} {user_message}\nСписок участников:\n\n",
     )
+
+    await message.pin()
 
     with SessionLocal() as session:
         platform_service = PlatformService(session)
@@ -215,6 +248,8 @@ async def new_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
             source_message_id=str(message.message_id),
         )
 
+    await delete_invoking_command(update, context)
+
 
 async def list_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
     access = await check_access(update, context)
@@ -237,7 +272,7 @@ async def list_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
         games = game_service.list_chat_games(chat_id=chat.id)
 
     if not games:
-        await context.bot.send_message(
+        await send_notice(update, context,
             chat_id=update.effective_chat.id,
             reply_to_message_id=update.message.id,
             text="Список игр пуст!",
@@ -246,7 +281,7 @@ async def list_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for game in games:
         game_text = f"{format_game_datetime_range(game.starts_at, game.duration_minutes)} {game.description or ''}".strip()
-        await context.bot.send_message(
+        await send_notice(update, context,
             chat_id=update.effective_chat.id,
             reply_to_message_id=int(game.source_message_id)
             if game.source_message_id
@@ -261,7 +296,7 @@ async def delete_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not update.message.reply_to_message:
-        await context.bot.send_message(
+        await send_notice(update, context,
             chat_id=update.effective_chat.id,
             reply_to_message_id=update.message.id,
             text="Нужно ответить на сообщение с игрой!",
@@ -291,7 +326,7 @@ async def delete_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
             source_message_id=str(update.message.reply_to_message.message_id),
         )
         if game is None:
-            await context.bot.send_message(
+            await send_notice(update, context,
                 chat_id=update.effective_chat.id,
                 reply_to_message_id=update.message.id,
                 text="Игра не найдена!",
@@ -299,7 +334,7 @@ async def delete_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         if account.id != game.author_account_id:
-            await context.bot.send_message(
+            await send_notice(update, context,
                 chat_id=update.effective_chat.id,
                 reply_to_message_id=update.message.id,
                 text="Удалять может только автор!",
@@ -312,7 +347,7 @@ async def delete_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id=update.effective_chat.id,
         message_id=update.message.reply_to_message.message_id,
     )
-    await context.bot.send_message(
+    await send_notice(update, context,
         chat_id=update.effective_chat.id,
         reply_to_message_id=update.message.id,
         text="Игра удалена!",
@@ -327,14 +362,14 @@ async def mynameis(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_name = " ".join(context.args)
 
     if not new_name.strip():
-        await context.bot.send_message(
+        await send_notice(update, context,
             chat_id=update.effective_chat.id,
             reply_to_message_id=update.message.id,
             text="Пожалуйста, введите новое имя!",
         )
         return
 
-    await context.bot.send_message(
+    await send_notice(update, context,
         chat_id=update.effective_chat.id,
         reply_to_message_id=update.message.id,
         text=f"Какой ты нахуй {new_name}?, ты  же {update.effective_user.full_name}, не позорься!",
@@ -373,17 +408,17 @@ async def _update_game_and_refresh_message(
         if game is None:
             return
 
-        if account.id != game.author_account_id:
-            await context.bot.send_message(
+        if not await _can_edit_game(update, context, account.id, game.author_account_id):
+            await send_notice(update, context,
                 chat_id=update.effective_chat.id,
                 reply_to_message_id=update.message.id,
-                text="Редактировать может только автор!",
+                text="Редактировать может только автор или админ чата!",
             )
             return
 
         game = game_service.update_game_settings(game, **update_fields)
 
-        await context.bot.send_message(
+        await send_notice(update, context,
             chat_id=update.effective_chat.id,
             reply_to_message_id=update.message.id,
             text=success_message,
@@ -404,7 +439,7 @@ async def set_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not context.args:
-        await context.bot.send_message(
+        await send_notice(update, context,
             chat_id=update.effective_chat.id,
             reply_to_message_id=update.message.id,
             text="Не указана цена игры!",
@@ -414,7 +449,7 @@ async def set_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         price = int(context.args[0])
     except Exception:
-        await context.bot.send_message(
+        await send_notice(update, context,
             chat_id=update.effective_chat.id,
             reply_to_message_id=update.message.id,
             text="Неверный формат цены! Введите число.",
@@ -422,7 +457,7 @@ async def set_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if price <= 0:
-        await context.bot.send_message(
+        await send_notice(update, context,
             chat_id=update.effective_chat.id,
             reply_to_message_id=update.message.id,
             text="Неверный формат цены! Введите число больше 0.",
@@ -443,7 +478,7 @@ async def set_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not context.args:
-        await context.bot.send_message(
+        await send_notice(update, context,
             chat_id=update.effective_chat.id,
             reply_to_message_id=update.message.id,
             text="Не указан временной диапазон!",
@@ -451,7 +486,7 @@ async def set_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not update.message.reply_to_message:
-        await context.bot.send_message(
+        await send_notice(update, context,
             chat_id=update.effective_chat.id,
             reply_to_message_id=update.message.id,
             text="Нужно ответить на сообщение с игрой!",
@@ -462,7 +497,7 @@ async def set_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         time_range = context.args[0]
         parse_time_range(time_range)
     except Exception:
-        await context.bot.send_message(
+        await send_notice(update, context,
             chat_id=update.effective_chat.id,
             reply_to_message_id=update.message.id,
             text="Неверный формат времени! Используй диапазон вида 19:00-20:30.",
@@ -492,25 +527,25 @@ async def set_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
             source_message_id=str(update.message.reply_to_message.message_id),
         )
         if game is None:
-            await context.bot.send_message(
+            await send_notice(update, context,
                 chat_id=update.effective_chat.id,
                 reply_to_message_id=update.message.id,
                 text="Игра не найдена!",
             )
             return
 
-        if account.id != game.author_account_id:
-            await context.bot.send_message(
+        if not await _can_edit_game(update, context, account.id, game.author_account_id):
+            await send_notice(update, context,
                 chat_id=update.effective_chat.id,
                 reply_to_message_id=update.message.id,
-                text="Редактировать может только автор!",
+                text="Редактировать может только автор или админ чата!",
             )
             return
 
         try:
             starts_at, duration_minutes = apply_time_range(game.starts_at, time_range)
         except Exception:
-            await context.bot.send_message(
+            await send_notice(update, context,
                 chat_id=update.effective_chat.id,
                 reply_to_message_id=update.message.id,
                 text="Неверный формат времени! Используй диапазон вида 19:00-20:30.",
@@ -523,7 +558,7 @@ async def set_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
             duration_minutes=duration_minutes,
         )
 
-        await context.bot.send_message(
+        await send_notice(update, context,
             chat_id=update.effective_chat.id,
             reply_to_message_id=update.message.id,
             text="Время игры обновлено!",
@@ -544,7 +579,7 @@ async def set_max_players_count(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     if not context.args:
-        await context.bot.send_message(
+        await send_notice(update, context,
             chat_id=update.effective_chat.id,
             reply_to_message_id=update.message.id,
             text="Не указана цена игры!",
@@ -554,7 +589,7 @@ async def set_max_players_count(update: Update, context: ContextTypes.DEFAULT_TY
     try:
         count = int(context.args[0])
     except Exception:
-        await context.bot.send_message(
+        await send_notice(update, context,
             chat_id=update.effective_chat.id,
             reply_to_message_id=update.message.id,
             text="Неверный формат кол-ва! Введите число.",
@@ -562,7 +597,7 @@ async def set_max_players_count(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     if count <= 0:
-        await context.bot.send_message(
+        await send_notice(update, context,
             chat_id=update.effective_chat.id,
             reply_to_message_id=update.message.id,
             text="Неверный формат кол-ва! Введите число больше 0.",
@@ -665,7 +700,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             not_sure_text = "\n".join(filter(None, not_sure_users))
 
             if not_sure_text:
-                await context.bot.send_message(
+                await send_notice(update, context,
                     chat_id=update.effective_chat.id,
                     reply_to_message_id=query.message.message_id,
                     parse_mode=ParseMode.MARKDOWN,
