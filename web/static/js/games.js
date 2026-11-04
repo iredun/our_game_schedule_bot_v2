@@ -1,5 +1,5 @@
 (() => {
-  const { request } = window.telegramApi;
+  const { request, webApp } = window.telegramApi;
   const chatSelect = document.getElementById("chat");
   const gamesElement = document.getElementById("games");
   const statusElement = document.getElementById("status");
@@ -41,6 +41,27 @@
         edit.href = `/games/${game.id}/edit`;
         edit.textContent = "Редактировать";
         card.append(edit);
+
+        const remove = document.createElement("button");
+        remove.className = "danger-button";
+        remove.type = "button";
+        remove.textContent = "Удалить";
+        remove.addEventListener("click", async () => {
+          const confirmed = webApp?.showConfirm
+            ? await new Promise((resolve) => webApp.showConfirm("Удалить игру и сообщение из чата?", resolve))
+            : window.confirm("Удалить игру и сообщение из чата?");
+          if (!confirmed) return;
+          remove.disabled = true;
+          statusElement.textContent = "Удаляем игру…";
+          try {
+            await request(`/api/telegram/games/${game.id}`, { method: "DELETE" });
+            await loadGames();
+          } catch (error) {
+            statusElement.textContent = error.message;
+            remove.disabled = false;
+          }
+        });
+        card.append(remove);
       }
       gamesElement.append(card);
     }

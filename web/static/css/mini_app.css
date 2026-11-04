@@ -56,5 +56,6 @@ button:disabled { opacity: .65; }
 .game-card h2 { margin: 0 0 8px; font-size: 17px; overflow-wrap: anywhere; }
 .game-card p { margin: 0; color: var(--hint); font-size: 14px; line-height: 1.5; }
 .button-link { display: inline-flex; min-height: 40px; align-items: center; margin-top: 12px; padding: 0 14px; border-radius: 9px; background: var(--accent); color: var(--tg-theme-button-text-color, #fff); text-decoration: none; }
+.danger-button { width: auto; min-height: 40px; margin: 12px 0 0 8px; padding: 0 14px; background: #b42318; color: #fff; }
 .message-link { display: inline-block; margin: 0 0 18px; color: var(--accent); }
 .chat-link-unavailable { display: block; margin-top: 10px; color: var(--hint); font-size: 13px; }

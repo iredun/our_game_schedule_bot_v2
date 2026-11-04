@@ -366,3 +366,29 @@ async def update_game(
             session.rollback()
             raise HTTPException(status_code=502, detail="Не удалось обновить сообщение игры в Telegram") from exc
     return {"id": game.id, "updated": True}
+
+
+@router.delete("/games/{game_id}")
+async def delete_game(
+    game_id: int,
+    authorization: str | None = Header(default=None),
+    session: Session = Depends(get_session),
+):
+    user = _require_user(authorization)
+    game = _active_game_or_404(session, game_id)
+    chat_id = int(game.chat.platform_chat_id)
+    account = _register_account(session, user)
+    async with Bot(settings.telegram_bot_token) as bot:
+        if not await _is_chat_member(bot, chat_id, user["id"]):
+            raise HTTPException(status_code=403, detail="Пользователь больше не состоит в этом чате")
+        if game.author_account_id != account.id and not await _is_chat_admin(bot, chat_id, user["id"]):
+            raise HTTPException(status_code=403, detail="Удалять может только автор или админ чата")
+        if not game.source_message_id:
+            raise HTTPException(status_code=409, detail="У игры нет связанного сообщения в Telegram")
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=int(game.source_message_id))
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="Не удалось удалить сообщение игры в Telegram") from exc
+
+    GameService(session).delete_game(game)
+    return {"id": game_id, "deleted": True}
