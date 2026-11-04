@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Игры</title>
+  <link rel="stylesheet" href="/static/css/mini_app.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="/static/js/telegram_api.js" defer></script>
+  <script src="/static/js/games.js" defer></script>
+</head>
+<body>
+  <main class="page">
+    <nav class="app-nav" aria-label="Навигация">
+      <a href="/app">Создать игру</a>
+      <a href="/games" aria-current="page">Список игр</a>
+    </nav>
+    <h1>Активные игры</h1>
+    <label for="chat">Чат</label>
+    <select id="chat" required><option value="">Загрузка чатов…</option></select>
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+    <section id="games" class="game-list" aria-live="polite"></section>
+  </main>
+</body>
+</html>

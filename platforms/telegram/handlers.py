@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 
 from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.constants import ChatMemberStatus, ParseMode
 from telegram.ext import ContextTypes
 
@@ -88,11 +89,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await calendar_link(update, context)
         return
 
-    await send_notice(
-        update,
-        context,
-        text="Бот запущен. Команда /calendar_link создаст персональную iCal ссылку.",
-    )
+    if update.effective_chat.type != "private" and not await check_access(update, context):
+        return
+
+    if update.effective_chat.type == "private":
+        await send_notice(
+            update,
+            context,
+            text="Создай игру через веб-интерфейс или получи персональную iCal ссылку.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(
+                    "Создать игру", web_app=WebAppInfo(url=f"{settings.app_base_url.rstrip('/')}/app")
+                )],
+                [InlineKeyboardButton(
+                    "Список игр", web_app=WebAppInfo(url=f"{settings.app_base_url.rstrip('/')}/games")
+                )],
+            ]),
+        )
+    else:
+        await send_notice(update, context, text="Бот запущен. Команда /calendar_link создаст персональную iCal ссылку.")
 
 
 async def calendar_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -631,6 +646,10 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             display_name=query.from_user.full_name,
         )
         session.commit()
+
+        ChatMemberService(session).observe_membership(
+            chat_id=chat.id, user_id=account.user_id
+        )
 
         chat_member_service = ChatMemberService(session)
         member_settings = chat_member_service.get_settings(

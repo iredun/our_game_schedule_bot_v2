@@ -1,12 +1,27 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from db.models import ChatMemberSettings
+from db.models import ChatMemberSettings, ChatMembership
 
 
 class ChatMemberRepository:
     def __init__(self, session: Session):
         self.session = session
+
+    def observe_membership(self, *, chat_id: int, user_id: int) -> ChatMembership:
+        stmt = select(ChatMembership).where(
+            ChatMembership.chat_id == chat_id, ChatMembership.user_id == user_id
+        )
+        membership = self.session.scalar(stmt)
+        if membership is None:
+            membership = ChatMembership(chat_id=chat_id, user_id=user_id)
+            self.session.add(membership)
+            self.session.flush()
+        return membership
+
+    def list_memberships(self, *, user_id: int) -> list[ChatMembership]:
+        stmt = select(ChatMembership).where(ChatMembership.user_id == user_id)
+        return list(self.session.scalars(stmt))
 
     def get(self, *, chat_id: int, user_id: int) -> ChatMemberSettings | None:
         stmt = select(ChatMemberSettings).where(

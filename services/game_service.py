@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -32,9 +32,9 @@ class GameService:
             title=title,
             description=description,
             starts_at=starts_at,
-            duration_minutes=duration_minutes or self.settings.default_game_duration_minutes,
-            price_per_hour=price_per_hour or self.settings.default_game_price,
-            max_players_count=max_players_count or self.settings.default_max_players_count,
+            duration_minutes=(duration_minutes if duration_minutes is not None else self.settings.default_game_duration_minutes),
+            price_per_hour=(price_per_hour if price_per_hour is not None else self.settings.default_game_price),
+            max_players_count=(max_players_count if max_players_count is not None else self.settings.default_max_players_count),
             source_message_id=source_message_id,
         )
         self.repository.create_game(game)
@@ -142,8 +142,23 @@ class GameService:
             source_message_id=source_message_id,
         )
 
+    def get_game(self, *, game_id: int) -> Game | None:
+        return self.repository.get_game(game_id)
+
     def list_chat_games(self, *, chat_id: int) -> list[Game]:
         return self.repository.list_active_games_for_chat(chat_id=chat_id)
+
+    def list_current_chat_games(self, *, chat_id: int, from_dt: datetime) -> list[Game]:
+        earliest_start = from_dt - timedelta(minutes=720)
+        games = self.repository.list_games_started_after(chat_id=chat_id, from_dt=earliest_start)
+        current_games = []
+        for game in games:
+            starts_at = game.starts_at
+            if starts_at.tzinfo is None:
+                starts_at = starts_at.replace(tzinfo=self.settings.timezone)
+            if starts_at + timedelta(minutes=game.duration_minutes) > from_dt:
+                current_games.append(game)
+        return current_games
 
     def cleanup_old_chat_games(self, *, chat_id: int, before_dt: datetime) -> int:
         deleted = self.repository.delete_games_before(chat_id=chat_id, before_dt=before_dt)
@@ -158,6 +173,9 @@ class GameService:
         price_per_hour: int | None = None,
         duration_minutes: int | None = None,
         max_players_count: int | None = None,
+        description: str | None = None,
+        title: str | None = None,
+        commit: bool = True,
     ) -> Game:
         fields: dict[str, object] = {}
         if starts_at is not None:
@@ -168,9 +186,14 @@ class GameService:
             fields["duration_minutes"] = duration_minutes
         if max_players_count is not None:
             fields["max_players_count"] = max_players_count
+        if description is not None:
+            fields["description"] = description
+        if title is not None:
+            fields["title"] = title
 
         updated_game = self.repository.update_game_fields(game, **fields)
-        self.session.commit()
+        if commit:
+            self.session.commit()
         return updated_game
 
     def delete_game(self, game: Game) -> None:

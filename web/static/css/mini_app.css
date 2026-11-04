@@ -1,0 +1,60 @@
+:root {
+  color-scheme: light dark;
+  --bg: var(--tg-theme-bg-color, #fff);
+  --fg: var(--tg-theme-text-color, #111);
+  --hint: var(--tg-theme-hint-color, #777);
+  --accent: var(--tg-theme-button-color, #2481cc);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 20px 16px 36px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px system-ui, sans-serif;
+}
+
+.page { max-width: 600px; margin: 0 auto; }
+h1 { margin: 0 0 20px; font-size: 22px; }
+label { display: block; margin: 14px 0 6px; color: var(--hint); font-size: 14px; }
+.app-nav { display: flex; gap: 10px; margin: 0 0 22px; }
+.app-nav a { flex: 1; padding: 11px 12px; border: 1px solid color-mix(in srgb, var(--hint) 30%, transparent); border-radius: 10px; color: var(--fg); text-align: center; text-decoration: none; }
+.app-nav a[aria-current="page"] { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+input, select, textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--hint) 35%, transparent);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+textarea { min-height: 80px; resize: vertical; }
+
+button {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 22px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--tg-theme-button-text-color, #fff);
+  font: inherit;
+  font-weight: 600;
+}
+
+button:disabled { opacity: .65; }
+.status { margin-top: 14px; color: var(--hint); white-space: pre-wrap; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.game-list { display: grid; gap: 12px; margin-top: 16px; }
+.game-card { padding: 14px; border: 1px solid color-mix(in srgb, var(--hint) 30%, transparent); border-radius: 12px; }
+.game-card h2 { margin: 0 0 8px; font-size: 17px; overflow-wrap: anywhere; }
+.game-card p { margin: 0; color: var(--hint); font-size: 14px; line-height: 1.5; }
+.button-link { display: inline-flex; min-height: 40px; align-items: center; margin-top: 12px; padding: 0 14px; border-radius: 9px; background: var(--accent); color: var(--tg-theme-button-text-color, #fff); text-decoration: none; }
+.message-link { display: inline-block; margin: 0 0 18px; color: var(--accent); }
+.chat-link-unavailable { display: block; margin-top: 10px; color: var(--hint); font-size: 13px; }

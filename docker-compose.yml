@@ -62,8 +62,10 @@ services:
         condition: service_completed_successfully
     env_file:
       - .env
-    expose:
-      - "8000"
+#    expose:
+#      - "8000"
+    ports:
+      - "8000:8000"
     labels:
       - traefik.enable=true
       - traefik.http.routers.web-http.rule=Host(`${TRAEFIK_DOMAIN}`)

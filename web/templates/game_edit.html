@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Редактировать игру</title>
+  <link rel="stylesheet" href="/static/css/mini_app.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="/static/js/telegram_api.js" defer></script>
+  <script src="/static/js/game_edit.js" defer></script>
+</head>
+<body data-game-id="{{ game_id }}">
+  <main class="page">
+    <nav class="app-nav" aria-label="Навигация">
+      <a href="/app">Создать игру</a>
+      <a href="/games" aria-current="page">Список игр</a>
+    </nav>
+    <h1>Редактировать игру</h1>
+    <a id="message-link" class="message-link" href="#" target="_blank" rel="noopener" hidden>Открыть сообщение в чате</a>
+    <form id="game-form" hidden>
+      <label for="starts">Дата и время</label>
+      <input id="starts" type="datetime-local" required>
+
+      <label for="description">Название или описание</label>
+      <textarea id="description" maxlength="1000"></textarea>
+
+      <div class="row">
+        <div>
+          <label for="duration">Длительность, мин</label>
+          <input id="duration" type="number" min="30" max="720" required>
+        </div>
+        <div>
+          <label for="price">Цена за час, ₽</label>
+          <input id="price" type="number" min="0" max="1000000" required>
+        </div>
+      </div>
+
+      <label for="players">Максимум игроков</label>
+      <input id="players" type="number" min="1" max="100" required>
+      <button id="submit" type="submit">Сохранить изменения</button>
+    </form>
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+  </main>
+</body>
+</html>

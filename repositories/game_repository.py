@@ -51,6 +51,18 @@ class GameRepository:
         )
         return list(self.session.scalars(stmt))
 
+    def list_games_started_after(self, *, chat_id: int, from_dt: datetime) -> list[Game]:
+        stmt = (
+            select(Game)
+            .where(
+                Game.chat_id == chat_id,
+                Game.status == GameStatus.ACTIVE,
+                Game.starts_at >= from_dt,
+            )
+            .order_by(Game.starts_at.asc())
+        )
+        return list(self.session.scalars(stmt))
+
     def get_active_games_for_user(self, user_id: int, from_dt: datetime | None = None) -> list[Game]:
         stmt = (
             select(Game)
