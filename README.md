@@ -47,6 +47,32 @@ alembic -c alembic.ini upgrade head
 python -m platforms.telegram.app
 ```
 
+## Создание игры из консоли или cron
+
+Команда `scripts.create_game` публикует игру в Telegram и сохраняет её в БД. Нужны `TELEGRAM_BOT_TOKEN`, `DATABASE_URL` и применённые миграции. Бот должен быть добавлен в чат и иметь право отправлять сообщения. `--chat-id` — ID группы, `--author-id` — Telegram ID пользователя, который будет считаться автором игры.
+
+```bash
+python -m scripts.create_game --chat-id -1001234567890 --author-id 123456789 \
+  --date next:saturday --time 19:00 --title '#игра' --description 'Настольный футбол' \
+  --duration 120 --price 2000 --max-players 14
+```
+
+В `--date` можно передать дату `YYYY-MM-DD`, `today`, `tomorrow`, `this:<день>` или `next:<день>`. Дни недели: `monday`…`sunday` или `пн`…`вс`. Например, `next:saturday` всегда означает ближайшую субботу строго после текущего дня; если команда запускается в воскресенье, это будет через шесть дней. `this:saturday` выбирает субботу текущей недели (в саму субботу — сегодня). Часовой пояс берётся из `TIMEZONE`.
+
+Cron на хосте, каждое воскресенье в 09:00 (серверное время cron):
+
+```cron
+0 9 * * 0 cd /path/to/our_game_schedule_bot && /path/to/venv/bin/python -m scripts.create_game --chat-id -1001234567890 --author-id 123456789 --date next:saturday --time 19:00 --title '#игра' --description 'Настольный футбол' >> /var/log/game-schedule.log 2>&1
+```
+
+Если приложение запущено через Docker Compose, cron тоже настраивается на хосте. Из каталога с `docker-compose.yml` команда `docker compose run --rm` создаст одноразовый контейнер на основе `tgbot`, подключит его к БД и загрузит настройки из `.env`:
+
+```cron
+0 9 * * 0 cd /path/to/our_game_schedule_bot && /usr/bin/docker compose run --rm tgbot python -m scripts.create_game --chat-id -1001234567890 --author-id 123456789 --date next:saturday --time 19:00 --title '#игра' --description 'Настольный футбол' >> /var/log/game-schedule.log 2>&1
+```
+
+Укажите фактический путь к проекту и к исполняемому файлу Docker (`command -v docker`). Каталог проекта важен: Compose берёт из него конфигурацию и `.env`. `run --rm` удаляет контейнер после выполнения команды; сервис `tgbot` при этом не останавливается.
+
 ## Запуск VK
 
 ```bash
