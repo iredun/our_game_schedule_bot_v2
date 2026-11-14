@@ -41,6 +41,19 @@ TIMEZONE=Europe/Moscow
 alembic -c alembic.ini upgrade head
 ```
 
+## Общие игры в связанных чатах
+
+После миграции каждый чат получает собственную запись в `communities`, поэтому без настройки бот продолжает работать как раньше. Чтобы объединить, например, Telegram- и VK-чаты, укажи обоим одинаковый `community_id`:
+
+```sql
+SELECT id, community_id, platform, platform_chat_id, title FROM chat_spaces ORDER BY id;
+UPDATE chat_spaces SET community_id = 1 WHERE id IN (12, 27);
+```
+
+В примере `12` и `27` — ID строк из `chat_spaces`, а `1` — ID существующей строки из `communities`. Сначала найди нужные чаты запросом `SELECT`, затем выполни `UPDATE` с фактическими ID. Игры и записи становятся общими для чатов с одинаковым `community_id`; сообщения каждой игры хранятся в `game_publications` отдельно по чату. Участники Telegram и VK остаются независимыми профилями. В чужой платформе участник помечается `TG` или `VK` по его профилю.
+
+Рассылка в VK требует `VK_BOT_TOKEN`, а в Telegram — `TELEGRAM_BOT_TOKEN`. Если группа содержит только чат одной настроенной платформы, игра публикуется и обновляется только там.
+
 ## Запуск Telegram
 
 ```bash
@@ -68,7 +81,7 @@ Cron на хосте, каждое воскресенье в 09:00 (сервер
 Если приложение запущено через Docker Compose, cron тоже настраивается на хосте. Из каталога с `docker-compose.yml` команда `docker compose run --rm` создаст одноразовый контейнер на основе `tgbot`, подключит его к БД и загрузит настройки из `.env`:
 
 ```cron
-0 9 * * 0 cd /path/to/our_game_schedule_bot && /usr/bin/docker compose run --rm tgbot python -m scripts.create_game --chat-id -1001234567890 --author-id 123456789 --date next:saturday --time 19:00 --title '#игра' --description 'Настольный футбол' >> /var/log/game-schedule.log 2>&1
+0 9 * * 0 cd /path/to/our_game_schedule_bot && /usr/bin/docker-compose run --rm tgbot python -m scripts.create_game --chat-id -1001234567890 --author-id 123456789 --date next:saturday --time 19:00 --title '#игра' --description 'Настольный футбол' >> /var/log/game-schedule.log 2>&1
 ```
 
 Укажите фактический путь к проекту и к исполняемому файлу Docker (`command -v docker`). Каталог проекта важен: Compose берёт из него конфигурацию и `.env`. `run --rm` удаляет контейнер после выполнения команды; сервис `tgbot` при этом не останавливается.

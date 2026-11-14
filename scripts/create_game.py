@@ -13,6 +13,7 @@ from platforms.telegram.consts import REPLY_MARKUP
 from platforms.telegram.formatting import generate_message
 from services.game_service import GameService
 from services.platform_service import PlatformService
+from services.publication_sync import sync_game_publications
 
 
 WEEKDAYS = {
@@ -119,6 +120,7 @@ async def create_and_publish(args: argparse.Namespace) -> int:
                 reply_markup=REPLY_MARKUP,
                 parse_mode="Markdown",
             )
+            await sync_game_publications(game.id)
     print(f"Игра {game.id} опубликована: {starts_at.isoformat()} (message_id={sent_message.message_id})")
     return game.id
 

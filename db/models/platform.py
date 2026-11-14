@@ -38,10 +38,12 @@ class ChatSpace(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    community_id: Mapped[int] = mapped_column(ForeignKey("communities.id", ondelete="CASCADE"), nullable=False)
     platform: Mapped[Platform] = mapped_column(Enum(Platform, native_enum=False), nullable=False)
     platform_chat_id: Mapped[str] = mapped_column(String(255), nullable=False)
     title: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    community = relationship("Community", back_populates="chats")
     games = relationship("Game", back_populates="chat")
     member_settings = relationship(
         "ChatMemberSettings",

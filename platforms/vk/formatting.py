@@ -1,7 +1,8 @@
 import math
+import re
 
 from core.game_time import calculate_total_price, format_duration_minutes, format_game_datetime_range
-from db.models import Game, GameParticipantStatus
+from db.models import Game, GameParticipantStatus, Platform
 from platforms.vk.consts import TYPE_TEXT_ADD
 
 
@@ -52,7 +53,14 @@ def generate_message(game: Game) -> str:
 
     users_numeric_list: list[str] = []
     for index, participant in enumerate(participants, 1):
-        display_name = participant.display_name_snapshot or f"user-{participant.user_id}"
+        account = next(iter(participant.user.platform_accounts), None)
+        snapshot = participant.display_name_snapshot or f"user-{participant.user_id}"
+        if account and account.platform == Platform.VK:
+            match = re.fullmatch(r"\[id\d+\|(.*)\]", snapshot)
+            display_name = f"[id{account.platform_user_id}|{match.group(1) if match else snapshot}]"
+        else:
+            match = re.fullmatch(r"\[(.*)\]\(tg://user\?id=\d+\)", snapshot)
+            display_name = f"{match.group(1) if match else snapshot} ✈️ TG"
         users_numeric_list.append(
             f"{index}. {display_name}{_participant_type_text(participant.status)}"
         )

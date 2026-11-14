@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from db.models import ChatSpace, Platform, PlatformAccount, UserProfile
+from db.models import ChatSpace, Community, Platform, PlatformAccount, UserProfile
 
 
 class PlatformRepository:
@@ -60,7 +60,12 @@ class PlatformRepository:
             chat.title = chat.title or title
             return chat
 
+        community = Community(title=title)
+        self.session.add(community)
+        self.session.flush()
+
         chat = ChatSpace(
+            community_id=community.id,
             platform=platform,
             platform_chat_id=platform_chat_id,
             title=title,

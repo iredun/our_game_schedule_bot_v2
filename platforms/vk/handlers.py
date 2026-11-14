@@ -17,6 +17,7 @@ from services.calendar_service import CalendarService
 from services.chat_member_service import ChatMemberService
 from services.game_service import GameService
 from services.platform_service import PlatformService
+from services.publication_sync import delete_game_publications, sync_game_publications
 
 
 settings = get_settings()
@@ -283,7 +284,7 @@ async def new_schedule(message: Message, args: list[str]) -> None:
         session.commit()
 
         game_service = GameService(session)
-        game_service.create_game(
+        game = game_service.create_game(
             chat_id=chat.id,
             author_account_id=account.id,
             title=user_message or "#игра",
@@ -294,6 +295,7 @@ async def new_schedule(message: Message, args: list[str]) -> None:
             max_players_count=settings.default_max_players_count,
             source_message_id=source_message_id,
         )
+    await sync_game_publications(game.id)
 
 
 async def list_schedule(message: Message, args: list[str]) -> None:
@@ -357,18 +359,12 @@ async def delete_schedule(message: Message, args: list[str]) -> None:
             await message.answer("Удалять может только автор!")
             return
 
-        game_service.delete_game(game)
+        game_id = game.id
 
-    delete_kwargs = {"delete_for_all": 1}
-    if _resolve_message_value(getattr(message, "reply_message", None), "message_id") is not None or getattr(
-        getattr(message, "reply_message", None), "id", None
-    ) is not None:
-        delete_kwargs["message_ids"] = [int(reply_source_message_id)]
-    else:
-        delete_kwargs["peer_id"] = message.peer_id
-        delete_kwargs["cmids"] = [int(reply_source_message_id)]
-
-    await message.ctx_api.messages.delete(**delete_kwargs)
+    await delete_game_publications(game_id)
+    with SessionLocal() as session:
+        service = GameService(session)
+        service.delete_game(service.get_game(game_id=game_id))
     await message.answer("Игра удалена!")
 
 
@@ -456,6 +452,9 @@ async def _update_game_and_refresh_message(
             edit_kwargs["cmid"] = int(reply_source_message_id)
 
         await message.ctx_api.messages.edit(**edit_kwargs)
+        game_id = game.id
+
+    await sync_game_publications(game_id)
 
 
 async def set_price(message: Message, args: list[str]) -> None:
@@ -555,6 +554,9 @@ async def set_time(message: Message, args: list[str]) -> None:
             edit_kwargs["cmid"] = int(reply_source_message_id)
 
         await message.ctx_api.messages.edit(**edit_kwargs)
+        game_id = game.id
+
+    await sync_game_publications(game_id)
 
 
 async def set_max_players_count(message: Message, args: list[str]) -> None:
@@ -699,4 +701,7 @@ async def buttons(bot: Bot, event: MessageEvent) -> None:
         }
 
         await bot.api.messages.edit(**edit_kwargs)
+        game_id = refreshed_game.id
         await event.show_snackbar("Обновлено")
+
+    await sync_game_publications(game_id)

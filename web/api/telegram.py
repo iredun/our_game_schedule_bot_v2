@@ -19,6 +19,7 @@ from platforms.telegram.formatting import generate_message
 from services.chat_member_service import ChatMemberService
 from services.game_service import GameService
 from services.platform_service import PlatformService
+from services.publication_sync import delete_game_publications, sync_game_publications
 
 
 router = APIRouter(prefix="/api/telegram", tags=["telegram"])
@@ -110,6 +111,18 @@ async def _is_chat_admin(bot: Bot, chat_id: int, user_id: int) -> bool:
     except Exception:
         return False
     return member.status in {ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER}
+
+
+async def _telegram_chat_for_game(bot: Bot, session: Session, user_id: int, game):
+    """Return a Telegram chat in the game's community where this user is a member."""
+    service = GameService(session)
+    for chat in service.list_community_chats(chat_id=game.chat_id):
+        if chat.platform != Platform.TELEGRAM:
+            continue
+        chat_id = int(chat.platform_chat_id)
+        if await _is_chat_member(bot, chat_id, user_id):
+            return chat_id, await _is_chat_admin(bot, chat_id, user_id)
+    return None
 
 
 def _build_message_url(chat, message_id: str | int | None) -> str | None:
@@ -230,12 +243,18 @@ async def create_game(
                 parse_mode=ParseMode.MARKDOWN,
             )
             game.source_message_id = str(message.message_id)
+            GameService(session).add_publication(
+                game_id=game.id,
+                chat_id=membership.chat_id,
+                message_id=str(message.message_id),
+            )
             session.commit()
             try:
                 await message.pin()
             except Exception:
                 pass
             message_url = await _message_url(bot, payload.chat_id, message.message_id)
+            await sync_game_publications(game.id)
     except HTTPException:
         raise
     except Exception as exc:
@@ -266,7 +285,12 @@ async def list_games(
         except Exception:
             telegram_chat = None
         chat_message_urls = {
-            game.id: _build_message_url(telegram_chat, game.source_message_id)
+            game.id: _build_message_url(
+                telegram_chat,
+                GameService(session).get_publication(game_id=game.id, chat_id=membership.chat_id).message_id
+                if GameService(session).get_publication(game_id=game.id, chat_id=membership.chat_id)
+                else None,
+            )
             for game in games
         } if telegram_chat else {}
 
@@ -295,21 +319,26 @@ async def get_game_for_edit(
 ):
     user = _require_user(authorization)
     game = _active_game_or_404(session, game_id)
-    chat_id = int(game.chat.platform_chat_id)
     account = _register_account(session, user)
     session.commit()
     async with Bot(settings.telegram_bot_token) as bot:
-        if not await _is_chat_member(bot, chat_id, user["id"]):
-            raise HTTPException(status_code=403, detail="Пользователь больше не состоит в этом чате")
-        can_edit = game.author_account_id == account.id or await _is_chat_admin(
-            bot, chat_id, user["id"]
+        chat_context = await _telegram_chat_for_game(bot, session, user["id"], game)
+        if chat_context is None:
+            raise HTTPException(status_code=403, detail="Нет доступа к Telegram-чату этой игры")
+        chat_id, is_admin = chat_context
+        can_edit = game.author_account_id == account.id or is_admin
+        service = GameService(session)
+        chat_row = next(
+            chat for chat in service.list_community_chats(chat_id=game.chat_id)
+            if chat.platform == Platform.TELEGRAM and int(chat.platform_chat_id) == chat_id
         )
-        message_url = await _message_url(bot, chat_id, game.source_message_id)
+        publication = service.get_publication(game_id=game.id, chat_id=chat_row.id)
+        message_url = await _message_url(bot, chat_id, publication.message_id if publication else None)
     if not can_edit:
         raise HTTPException(status_code=403, detail="Редактировать может только автор или админ чата")
     return {
         "id": game.id,
-        "chat_id": int(game.chat.platform_chat_id),
+        "chat_id": chat_id,
         "starts_at": _datetime_iso(game.starts_at),
         "description": game.description or "",
         "duration_minutes": game.duration_minutes,
@@ -331,14 +360,21 @@ async def update_game(
     game = _active_game_or_404(session, game_id)
     if starts_at <= datetime.now(settings.timezone) and starts_at != _normalize_datetime(game.starts_at):
         raise HTTPException(status_code=422, detail="Нельзя перенести игру в прошлое")
-    chat_id = int(game.chat.platform_chat_id)
     account = _register_account(session, user)
     async with Bot(settings.telegram_bot_token) as bot:
-        if not await _is_chat_member(bot, chat_id, user["id"]):
-            raise HTTPException(status_code=403, detail="Пользователь больше не состоит в этом чате")
-        if game.author_account_id != account.id and not await _is_chat_admin(bot, chat_id, user["id"]):
+        chat_context = await _telegram_chat_for_game(bot, session, user["id"], game)
+        if chat_context is None:
+            raise HTTPException(status_code=403, detail="Нет доступа к Telegram-чату этой игры")
+        chat_id, is_admin = chat_context
+        if game.author_account_id != account.id and not is_admin:
             raise HTTPException(status_code=403, detail="Редактировать может только автор или админ чата")
-        if not game.source_message_id:
+        service = GameService(session)
+        chat_row = next(
+            chat for chat in service.list_community_chats(chat_id=game.chat_id)
+            if chat.platform == Platform.TELEGRAM and int(chat.platform_chat_id) == chat_id
+        )
+        publication = service.get_publication(game_id=game.id, chat_id=chat_row.id)
+        if not publication:
             raise HTTPException(status_code=409, detail="У игры нет связанного сообщения в Telegram")
 
         description = payload.description.strip()
@@ -356,12 +392,13 @@ async def update_game(
         try:
             await bot.edit_message_text(
                 chat_id=chat_id,
-                message_id=int(game.source_message_id),
+                message_id=int(publication.message_id),
                 text=generate_message(game),
                 reply_markup=REPLY_MARKUP,
                 parse_mode=ParseMode.MARKDOWN,
             )
             session.commit()
+            await sync_game_publications(game.id)
         except Exception as exc:
             session.rollback()
             raise HTTPException(status_code=502, detail="Не удалось обновить сообщение игры в Telegram") from exc
@@ -376,17 +413,24 @@ async def delete_game(
 ):
     user = _require_user(authorization)
     game = _active_game_or_404(session, game_id)
-    chat_id = int(game.chat.platform_chat_id)
     account = _register_account(session, user)
     async with Bot(settings.telegram_bot_token) as bot:
-        if not await _is_chat_member(bot, chat_id, user["id"]):
-            raise HTTPException(status_code=403, detail="Пользователь больше не состоит в этом чате")
-        if game.author_account_id != account.id and not await _is_chat_admin(bot, chat_id, user["id"]):
+        chat_context = await _telegram_chat_for_game(bot, session, user["id"], game)
+        if chat_context is None:
+            raise HTTPException(status_code=403, detail="Нет доступа к Telegram-чату этой игры")
+        chat_id, is_admin = chat_context
+        if game.author_account_id != account.id and not is_admin:
             raise HTTPException(status_code=403, detail="Удалять может только автор или админ чата")
-        if not game.source_message_id:
+        service = GameService(session)
+        chat_row = next(
+            chat for chat in service.list_community_chats(chat_id=game.chat_id)
+            if chat.platform == Platform.TELEGRAM and int(chat.platform_chat_id) == chat_id
+        )
+        publication = service.get_publication(game_id=game.id, chat_id=chat_row.id)
+        if not publication:
             raise HTTPException(status_code=409, detail="У игры нет связанного сообщения в Telegram")
         try:
-            await bot.delete_message(chat_id=chat_id, message_id=int(game.source_message_id))
+            await delete_game_publications(game.id)
         except Exception as exc:
             raise HTTPException(status_code=502, detail="Не удалось удалить сообщение игры в Telegram") from exc
 

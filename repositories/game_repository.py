@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, joinedload
 
-from db.models import Game, GameParticipant, GameParticipantStatus, GameStatus
+from db.models import ChatSpace, Game, GameParticipant, GameParticipantStatus, GamePublication, GameStatus
 
 
 class GameRepository:
@@ -35,33 +35,64 @@ class GameRepository:
                 joinedload(Game.chat),
                 joinedload(Game.author_account),
             )
-            .where(
-                Game.chat_id == chat_id,
-                Game.source_message_id == source_message_id,
-                Game.status == GameStatus.ACTIVE,
-            )
+            .join(GamePublication, GamePublication.game_id == Game.id)
+            .where(GamePublication.chat_id == chat_id, GamePublication.message_id == source_message_id,
+                   Game.status == GameStatus.ACTIVE)
         )
         return self.session.scalar(stmt)
 
     def list_active_games_for_chat(self, *, chat_id: int) -> list[Game]:
+        chat = self.session.get(ChatSpace, chat_id)
+        if chat is None:
+            return []
         stmt = (
             select(Game)
-            .where(Game.chat_id == chat_id, Game.status == GameStatus.ACTIVE)
+            .join(ChatSpace, Game.chat_id == ChatSpace.id)
+            .where(ChatSpace.community_id == chat.community_id, Game.status == GameStatus.ACTIVE)
             .order_by(Game.starts_at.asc())
         )
         return list(self.session.scalars(stmt))
 
     def list_games_started_after(self, *, chat_id: int, from_dt: datetime) -> list[Game]:
+        chat = self.session.get(ChatSpace, chat_id)
+        if chat is None:
+            return []
         stmt = (
             select(Game)
+            .join(ChatSpace, Game.chat_id == ChatSpace.id)
             .where(
-                Game.chat_id == chat_id,
+                ChatSpace.community_id == chat.community_id,
                 Game.status == GameStatus.ACTIVE,
                 Game.starts_at >= from_dt,
             )
             .order_by(Game.starts_at.asc())
         )
         return list(self.session.scalars(stmt))
+
+    def add_publication(self, *, game_id: int, chat_id: int, message_id: str) -> GamePublication:
+        publication = self.session.scalar(select(GamePublication).where(
+            GamePublication.game_id == game_id, GamePublication.chat_id == chat_id
+        ))
+        if publication is None:
+            publication = GamePublication(game_id=game_id, chat_id=chat_id, message_id=message_id)
+            self.session.add(publication)
+        else:
+            publication.message_id = message_id
+        self.session.flush()
+        return publication
+
+    def get_publication(self, *, game_id: int, chat_id: int) -> GamePublication | None:
+        return self.session.scalar(select(GamePublication).where(
+            GamePublication.game_id == game_id, GamePublication.chat_id == chat_id
+        ))
+
+    def list_community_chats(self, *, chat_id: int) -> list[ChatSpace]:
+        chat = self.session.get(ChatSpace, chat_id)
+        if chat is None:
+            return []
+        return list(self.session.scalars(select(ChatSpace).where(
+            ChatSpace.community_id == chat.community_id
+        )))
 
     def get_active_games_for_user(self, user_id: int, from_dt: datetime | None = None) -> list[Game]:
         stmt = (

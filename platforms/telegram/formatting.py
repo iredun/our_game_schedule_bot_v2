@@ -1,9 +1,10 @@
 import math
+import re
 
 from telegram import User
 
 from core.game_time import calculate_total_price, format_duration_minutes, format_game_datetime_range
-from db.models import Game, GameParticipantStatus
+from db.models import Game, GameParticipantStatus, Platform
 from platforms.telegram.consts import TYPE_TEXT_ADD
 from core.config import get_settings
 
@@ -52,7 +53,14 @@ def generate_message(game: Game) -> str:
 
     users_numeric_list: list[str] = []
     for index, participant in enumerate(participants, 1):
-        display_name = participant.display_name_snapshot or f"user-{participant.user_id}"
+        account = next(iter(participant.user.platform_accounts), None)
+        snapshot = participant.display_name_snapshot or f"user-{participant.user_id}"
+        if account and account.platform == Platform.TELEGRAM:
+            match = re.fullmatch(r"\[(.*)\]\(tg://user\?id=\d+\)", snapshot)
+            display_name = f"[{match.group(1) if match else snapshot}](tg://user?id={account.platform_user_id})"
+        else:
+            match = re.fullmatch(r"\[id\d+\|(.*)\]", snapshot)
+            display_name = f"{match.group(1) if match else snapshot} 🔵 VK"
         users_numeric_list.append(
             f"{index}. {display_name}{_participant_type_text(participant.status)}"
         )

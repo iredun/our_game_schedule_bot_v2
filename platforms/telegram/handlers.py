@@ -23,6 +23,7 @@ from services.calendar_service import CalendarService
 from services.chat_member_service import ChatMemberService
 from services.game_service import GameService
 from services.platform_service import PlatformService
+from services.publication_sync import delete_game_publications, sync_game_publications
 
 
 settings = get_settings()
@@ -251,7 +252,7 @@ async def new_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session.commit()
 
         game_service = GameService(session)
-        game_service.create_game(
+        game = game_service.create_game(
             chat_id=chat.id,
             author_account_id=account.id,
             title=user_message or "#игра",
@@ -262,6 +263,8 @@ async def new_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
             max_players_count=settings.default_max_players_count,
             source_message_id=str(message.message_id),
         )
+
+    await sync_game_publications(game.id)
 
     await delete_invoking_command(update, context)
 
@@ -285,6 +288,10 @@ async def list_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=chat.id, before_dt=_now_date_without_time()
         )
         games = game_service.list_chat_games(chat_id=chat.id)
+        publications = {
+            game.id: game_service.get_publication(game_id=game.id, chat_id=chat.id)
+            for game in games
+        }
 
     if not games:
         await send_notice(update, context,
@@ -296,10 +303,11 @@ async def list_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for game in games:
         game_text = f"{format_game_datetime_range(game.starts_at, game.duration_minutes)} {game.description or ''}".strip()
+        publication = publications.get(game.id)
         await send_notice(update, context,
             chat_id=update.effective_chat.id,
-            reply_to_message_id=int(game.source_message_id)
-            if game.source_message_id
+            reply_to_message_id=int(publication.message_id)
+            if publication
             else None,
             text=game_text,
         )
@@ -356,12 +364,12 @@ async def delete_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        game_service.delete_game(game)
+        game_id = game.id
 
-    await context.bot.delete_message(
-        chat_id=update.effective_chat.id,
-        message_id=update.message.reply_to_message.message_id,
-    )
+    await delete_game_publications(game_id)
+    with SessionLocal() as session:
+        service = GameService(session)
+        service.delete_game(service.get_game(game_id=game_id))
     await send_notice(update, context,
         chat_id=update.effective_chat.id,
         reply_to_message_id=update.message.id,
@@ -446,6 +454,9 @@ async def _update_game_and_refresh_message(
             reply_markup=REPLY_MARKUP,
             parse_mode=ParseMode.MARKDOWN,
         )
+        game_id = game.id
+
+    await sync_game_publications(game_id)
 
 
 async def set_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -586,6 +597,9 @@ async def set_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=REPLY_MARKUP,
             parse_mode=ParseMode.MARKDOWN,
         )
+        game_id = game.id
+
+    await sync_game_publications(game_id)
 
 
 async def set_max_players_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -740,4 +754,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             reply_markup=REPLY_MARKUP,
             parse_mode=ParseMode.MARKDOWN,
         )
-        await query.answer()
+        game_id = refreshed_game.id
+
+    await sync_game_publications(game_id)
+    await query.answer()

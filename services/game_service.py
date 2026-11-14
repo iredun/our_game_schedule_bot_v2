@@ -38,6 +38,12 @@ class GameService:
             source_message_id=source_message_id,
         )
         self.repository.create_game(game)
+        if source_message_id is not None:
+            self.repository.add_publication(
+                game_id=game.id,
+                chat_id=chat_id,
+                message_id=source_message_id,
+            )
         self.session.commit()
         return game
 
@@ -141,6 +147,17 @@ class GameService:
             chat_id=chat_id,
             source_message_id=source_message_id,
         )
+
+    def add_publication(self, *, game_id: int, chat_id: int, message_id: str):
+        publication = self.repository.add_publication(game_id=game_id, chat_id=chat_id, message_id=message_id)
+        self.session.commit()
+        return publication
+
+    def get_publication(self, *, game_id: int, chat_id: int):
+        return self.repository.get_publication(game_id=game_id, chat_id=chat_id)
+
+    def list_community_chats(self, *, chat_id: int):
+        return self.repository.list_community_chats(chat_id=chat_id)
 
     def get_game(self, *, game_id: int) -> Game | None:
         return self.repository.get_game(game_id)

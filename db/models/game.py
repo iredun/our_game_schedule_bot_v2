@@ -44,6 +44,7 @@ class Game(TimestampMixin, Base):
     chat = relationship("ChatSpace", back_populates="games")
     author_account = relationship("PlatformAccount", back_populates="authored_games")
     participants = relationship("GameParticipant", back_populates="game", cascade="all, delete-orphan")
+    publications = relationship("GamePublication", back_populates="game", cascade="all, delete-orphan")
 
 
 class GameParticipant(TimestampMixin, Base):
